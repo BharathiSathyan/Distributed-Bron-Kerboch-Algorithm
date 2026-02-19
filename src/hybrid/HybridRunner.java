@@ -1,5 +1,6 @@
 package src.hybrid;
 
+import mpi.*;
 import src.core.*;
 
 import java.io.*;
@@ -10,17 +11,16 @@ public class HybridRunner {
 
     public static void main(String[] args) throws Exception {
 
+        MPI.Init(args);
+
+        int rank = MPI.COMM_WORLD.Rank();
+        int size = MPI.COMM_WORLD.Size();
+
+        // Thread configs per process (hybrid tuning)
+        int threadsPerProcess = Runtime.getRuntime().availableProcessors() / size;
+        if (threadsPerProcess < 1) threadsPerProcess = 1;
+
         int[] vertexSizes = {4, 15, 100, 200};
-
-        // Hybrid configs (cores × threads)
-        int[][] configs = {
-                {1, 1},
-                {2, 2},
-                {2, 3},
-                {3, 4}
-        };
-
-        createHeaderIfNeeded();
 
         for (int v : vertexSizes) {
 
@@ -28,91 +28,81 @@ public class HybridRunner {
 
             Graph graph = loadGraph(graphPath);
 
-            for (int[] config : configs) {
+            MPI.COMM_WORLD.Barrier(); // synchronize processes
 
-                int cores = config[0];
-                int threadsPerCore = config[1];
-                int totalThreads = cores * threadsPerCore;
+            long startTime = System.nanoTime();
 
-                System.out.println("-----------------------------------");
-                System.out.println("Graph: " + v +
-                        " | Cores: " + cores +
-                        " | Threads/Core: " + threadsPerCore);
+            ExecutorService executor =
+                    Executors.newFixedThreadPool(threadsPerProcess);
 
-                long startTime = System.nanoTime();
+            AtomicInteger localCliqueCount = new AtomicInteger(0);
 
-                ExecutorService executor =
-                        Executors.newFixedThreadPool(totalThreads);
+            // Each MPI process handles subset of vertices
+            for (int i = 0; i < graph.getVertices(); i++) {
 
-                AtomicInteger totalCliques =
-                        new AtomicInteger(0);
-
-                for (int i = 0; i < graph.getVertices(); i++) {
+                if (i % size == rank) {
 
                     final int vertex = i;
 
                     executor.submit(() -> {
-
-                        BronKerbosch bk =
-                                new BronKerbosch(graph);
-
+                        BronKerbosch bk = new BronKerbosch(graph);
                         bk.runFromVertex(vertex);
-
-                        totalCliques.addAndGet(
-                                bk.getCliqueCount());
+                        localCliqueCount.addAndGet(bk.getCliqueCount());
                     });
                 }
+            }
 
-                executor.shutdown();
-                executor.awaitTermination(1, TimeUnit.HOURS);
+            executor.shutdown();
+            executor.awaitTermination(1, TimeUnit.HOURS);
 
-                long endTime = System.nanoTime();
+            int[] globalCount = new int[1];
 
-                double executionTime =
-                        (endTime - startTime) / 1e9;
+            // Reduce all process results to rank 0
+            MPI.COMM_WORLD.Reduce(
+                    new int[]{localCliqueCount.get()}, 0,
+                    globalCount, 0,
+                    1, MPI.INT, MPI.SUM, 0
+            );
 
-                saveFinalResult(
+            long endTime = System.nanoTime();
+
+            if (rank == 0) {
+
+                double executionTime = (endTime - startTime) / 1e9;
+
+                saveResult(
                         v,
-                        cores,
-                        threadsPerCore,
-                        totalThreads,
+                        size,
+                        threadsPerProcess,
                         executionTime,
-                        totalCliques.get()
+                        globalCount[0]
                 );
 
-                System.out.println("Execution Time: "
-                        + executionTime + " sec");
-                System.out.println("Maximal Cliques: "
-                        + totalCliques.get());
+                System.out.println("-----------------------------------");
+                System.out.println("Graph: " + v);
+                System.out.println("Processes (MPI): " + size);
+                System.out.println("Threads per Process: " + threadsPerProcess);
+                System.out.println("Execution Time: " + executionTime + " sec");
+                System.out.println("Maximal Cliques: " + globalCount[0]);
             }
         }
 
-        System.out.println("\nHybrid execution complete.");
+        MPI.Finalize();
     }
 
-    // --------------------------------------------------
-    // LOAD GRAPH
-    // --------------------------------------------------
-    private static Graph loadGraph(String filePath)
-            throws IOException {
+    private static Graph loadGraph(String filePath) throws IOException {
 
-        BufferedReader reader =
-                new BufferedReader(new FileReader(filePath));
+        BufferedReader reader = new BufferedReader(new FileReader(filePath));
 
-        int vertices =
-                Integer.parseInt(reader.readLine());
-
+        int vertices = Integer.parseInt(reader.readLine());
         Graph graph = new Graph(vertices);
 
         String line;
 
         while ((line = reader.readLine()) != null) {
-
             String[] parts = line.split(" ");
-
             int u = Integer.parseInt(parts[0]);
             int v = Integer.parseInt(parts[1]);
-
             graph.addEdge(u, v);
         }
 
@@ -120,54 +110,34 @@ public class HybridRunner {
         return graph;
     }
 
-    // --------------------------------------------------
-    // HEADER
-    // --------------------------------------------------
-    private static void createHeaderIfNeeded()
-            throws IOException {
+    private static void saveResult(int vertices,
+                                   int processes,
+                                   int threadsPerProcess,
+                                   double time,
+                                   int cliqueCount) throws IOException {
+
+        File dir = new File("results");
+        if (!dir.exists()) dir.mkdir();
 
         File file = new File("results/hybrid.csv");
 
-        if (!file.exists()) {
-
-            File dir = new File("results");
-            if (!dir.exists()) dir.mkdir();
-
-            BufferedWriter writer =
-                    new BufferedWriter(new FileWriter(file));
-
-            writer.write("vertices,cores,threads_per_core,"
-                    + "total_threads,execution_time,cliques");
-
-            writer.newLine();
-            writer.close();
-        }
-    }
-
-    // --------------------------------------------------
-    // SAVE RESULT
-    // --------------------------------------------------
-    private static void saveFinalResult(
-            int vertices,
-            int cores,
-            int threadsPerCore,
-            int totalThreads,
-            double time,
-            int cliqueCount) throws IOException {
+        boolean writeHeader = !file.exists();
 
         BufferedWriter writer =
-                new BufferedWriter(
-                        new FileWriter("results/hybrid.csv", true));
+                new BufferedWriter(new FileWriter(file, true));
 
-        writer.write(vertices + ","
-                + cores + ","
-                + threadsPerCore + ","
-                + totalThreads + ","
-                + time + ","
-                + cliqueCount);
+        if (writeHeader) {
+            writer.write("vertices,processes,threads_per_process,execution_time,cliques");
+            writer.newLine();
+        }
+
+        writer.write(vertices + "," +
+                processes + "," +
+                threadsPerProcess + "," +
+                time + "," +
+                cliqueCount);
 
         writer.newLine();
         writer.close();
     }
 }
- 
