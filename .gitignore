@@ -19,9 +19,9 @@ out/
 build/
 
 # Results and checkpoints (generated files)
-results/
-*.csv
-*_checkpoint_*.txt
+# results/
+# *.csv
+# *_checkpoint_*.txt
 
 # MPJ runtime temp files
 mpjdev*
