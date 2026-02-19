@@ -12,12 +12,27 @@ public class SharedMemoryRunner {
 
         int[] vertexSizes = {4, 15, 100, 200};
 
-        int maxThreads = Runtime.getRuntime().availableProcessors();
-        int[] threadConfigs = {1, 4, 6, maxThreads};
+        int availableCores = Runtime.getRuntime().availableProcessors();
 
         createHeaderIfNeeded();
 
         for (int v : vertexSizes) {
+
+            // -------------------------------
+            // Dynamic Thread Configuration
+            // -------------------------------
+            int[] threadConfigs;
+
+            if (v <= 15) {
+                // Small graphs - full scaling analysis
+                threadConfigs = new int[]{1, 2, 4, availableCores};
+            } else if (v == 100) {
+                // Medium graph - balanced configs
+                threadConfigs = new int[]{1, 4, availableCores};
+            } else {
+                // Large graph (200) - time efficient + scientific baseline
+                threadConfigs = new int[]{availableCores};
+            }
 
             String graphPath = "data/graphs/graph_" + v + ".txt";
 
@@ -27,7 +42,8 @@ public class SharedMemoryRunner {
 
                 System.out.println("-----------------------------------");
                 System.out.println("Graph: " + v +
-                        " | Threads: " + threadCount);
+                        " | Threads: " + threadCount +
+                        " | Available Cores: " + availableCores);
 
                 long startTime = System.nanoTime();
 
@@ -42,19 +58,16 @@ public class SharedMemoryRunner {
                     final int vertex = i;
 
                     executor.submit(() -> {
-
-                        BronKerbosch bk =
-                                new BronKerbosch(graph);
-
+                        BronKerbosch bk = new BronKerbosch(graph);
                         bk.runFromVertex(vertex);
-
-                        totalCliques.addAndGet(
-                                bk.getCliqueCount());
+                        totalCliques.addAndGet(bk.getCliqueCount());
                     });
                 }
 
                 executor.shutdown();
-                executor.awaitTermination(1, TimeUnit.HOURS);
+
+                // Increased timeout for dense graphs (important)
+                executor.awaitTermination(2, TimeUnit.HOURS);
 
                 long endTime = System.nanoTime();
 
@@ -64,6 +77,7 @@ public class SharedMemoryRunner {
                 saveFinalResult(
                         v,
                         threadCount,
+                        availableCores,
                         executionTime,
                         totalCliques.get()
                 );
@@ -110,7 +124,7 @@ public class SharedMemoryRunner {
     }
 
     // --------------------------------------------------
-    // CREATE HEADER ONCE
+    // CREATE HEADER (ONLY ONCE)
     // --------------------------------------------------
     private static void createHeaderIfNeeded()
             throws IOException {
@@ -125,8 +139,7 @@ public class SharedMemoryRunner {
             BufferedWriter writer =
                     new BufferedWriter(new FileWriter(file));
 
-            writer.write(
-                    "vertices,threads,execution_time,cliques");
+            writer.write("vertices,threads,cores,execution_time,cliques");
             writer.newLine();
 
             writer.close();
@@ -139,6 +152,7 @@ public class SharedMemoryRunner {
     private static void saveFinalResult(
             int vertices,
             int threads,
+            int cores,
             double time,
             int cliqueCount) throws IOException {
 
@@ -149,6 +163,7 @@ public class SharedMemoryRunner {
         writer.write(
                 vertices + "," +
                 threads + "," +
+                cores + "," +
                 time + "," +
                 cliqueCount
         );
