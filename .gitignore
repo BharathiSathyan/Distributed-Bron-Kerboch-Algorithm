@@ -1,5 +1,31 @@
+.idea/
+
+# Compiled Java files
 *.class
+
+# Logs
+*.log
+
+# VS Code settings (optional but recommended)
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build / Output folders
+bin/
 out/
 build/
-.idea/
-.vscode/
+
+# Results and checkpoints (generated files)
+results/
+*.csv
+*_checkpoint_*.txt
+
+# MPJ runtime temp files
+mpjdev*
+hs_err_pid*
+
+# Library jars (optional choice - see note below)
+# lib/mpj.jar
