@@ -1,5 +1,5 @@
 graph_id,vertices,edges,target_density,actual_density,path
-graph_4,4,2,0.2-0.4,0.333333,data/graphs/graph_4.txt
-graph_15,15,30,0.2-0.4,0.285714,data/graphs/graph_15.txt
-graph_100,100,1647,0.2-0.4,0.332727,data/graphs/graph_100.txt
-graph_200,200,6836,0.2-0.4,0.343517,data/graphs/graph_200.txt
+graph_4_sparse,4,2,0.2-0.4,0.333333,data/graphs/graph_4_sparse.txt
+graph_15_sparse,15,30,0.2-0.4,0.285714,data/graphs/graph_15_sparse.txt
+graph_100_sparse,100,1647,0.2-0.4,0.332727,data/graphs/graph_100_sparse.txt
+graph_200_sparse,200,6836,0.2-0.4,0.343517,data/graphs/graph_200_sparse.txt
