@@ -6,6 +6,8 @@ public class BronKerbosch {
 
     private Graph graph;
     private int cliqueCount;
+    private int startVertex;
+
 
     public BronKerbosch(Graph graph) {
         this.graph = graph;
@@ -18,6 +20,8 @@ public class BronKerbosch {
 
     // Run for a single starting vertex
     public void runFromVertex(int v) {
+
+        this.startVertex = v;
 
         Set<Integer> A = new HashSet<>();
         A.add(v);
@@ -33,7 +37,14 @@ public class BronKerbosch {
                               Set<Integer> C) {
 
         if (B.isEmpty() && C.isEmpty()) {
-            cliqueCount++;
+
+            int minVertex = Collections.min(A);
+
+            // Avoid duplicate counting
+            if (startVertex == minVertex) {
+                cliqueCount++;
+            }
+
             return;
         }
 
